@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Transkrypcja Live</title>
+    <style>
+        :root { --primary: #3b82f6; --danger: #ef4444; --bg: #0f172a; }
+        body { 
+            margin: 0; font-family: sans-serif; background: var(--bg); color: white;
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        }
+        .container { 
+            flex: 1; display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; padding: 20px; text-align: center;
+        }
+        #status { margin-bottom: 20px; font-size: 1.2rem; color: #94a3b8; }
+        .dot { height: 12px; width: 12px; background-color: var(--danger); border-radius: 50%; display: inline-block; margin-right: 10px; visibility: hidden; }
+        .recording .dot { visibility: visible; animation: blink 1s infinite; }
+        
+        @keyframes blink { 50% { opacity: 0; } }
+
+        #transcription-area {
+            width: 80%; max-width: 800px; height: 300px; background: #1e293b;
+            border-radius: 12px; padding: 20px; margin-top: 20px; overflow-y: auto;
+            border: 1px solid #334155; text-align: left; line-height: 1.6;
+        }
+        
+        .controls button {
+            padding: 15px 40px; font-size: 1.1rem; border: none; border-radius: 30px;
+            cursor: pointer; transition: 0.3s; font-weight: bold;
+        }
+        .btn-start { background: var(--primary); color: white; }
+        .btn-stop { background: var(--danger); color: white; display: none; }
+        
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid var(--primary); border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; margin-left: 10px; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>BIEREK AI PRAKTYKI</h1>
+        <div id="status">Gotowy do nagrywania</div>
+        
+        <div class="controls">
+            <button id="startBtn" class="btn-start">Rozpocznij nagrywanie</button>
+            <button id="stopBtn" class="btn-stop">Zatrzymaj i generuj tekst</button>
+        </div>
+
+        <div id="transcription-area">
+            <span id="placeholder" style="color: #64748b;">Tu pojawi się transkrypcja...</span>
+            <div id="loader" class="loader"></div>
+            <p id="outputText"></p>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const outputText = document.getElementById('outputText');
+        const loader = document.getElementById('loader');
+
+        startBtn.onclick = async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
+            
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendToBackend(audioBlob);
+            };
+
+            mediaRecorder.start();
+            statusDiv.innerHTML = '<span class="dot"></span>Nagrywanie...';
+            document.body.classList.add('recording');
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+        };
+
+        stopBtn.onclick = () => {
+            mediaRecorder.stop();
+            statusDiv.innerText = 'Przetwarzanie dźwięku...';
+            loader.style.display = 'inline-block';
+            document.body.classList.remove('recording');
+            stopBtn.style.display = 'none';
+            startBtn.style.display = 'inline-block';
+        };
+
+        async function sendToBackend(blob) {
+            const formData = new FormData();
+            formData.append('file', blob, 'recording.webm');
+
+            try {
+                const response = await fetch('http://localhost:8000/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                document.getElementById('placeholder').style.display = 'none';
+                outputText.innerText = data.text;
+            } catch (error) {
+                alert('Błąd połączenia z serwerem!');
+                console.error(error);
+            } finally {
+                loader.style.display = 'none';
+                statusDiv.innerText = 'Gotowy';
+            }
+        }
+    </script>
+</body>
+</html>
